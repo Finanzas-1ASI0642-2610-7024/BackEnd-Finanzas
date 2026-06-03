@@ -1,0 +1,7 @@
+node_modules/
+*.sqlite
+*.sqlite-journal
+.env
+.DS_Store
+.idea/
+.vscode/
