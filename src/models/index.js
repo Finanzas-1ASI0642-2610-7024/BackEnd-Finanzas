@@ -3,8 +3,9 @@ const sequelize = require('../config/database');
 
 const Usuario = sequelize.define('Usuario', {
     id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-    nombre: { type: DataTypes.STRING, allowNull: false },
-    contrasena: { type: DataTypes.STRING, allowNull: false }
+    nombre: { type: DataTypes.STRING, allowNull: false, unique: true }, // usar nombre como username
+    contrasena: { type: DataTypes.STRING, allowNull: false },
+    rol: { type: DataTypes.STRING, allowNull: false, defaultValue: 'user' } // 'admin' o 'user'
 }, { tableName: 'usuarios', timestamps: false });
 
 const Cliente = sequelize.define('Cliente', {
@@ -33,7 +34,9 @@ const CostosAdicionales = sequelize.define('CostosAdicionales', {
 
 const CreditoVehicular = sequelize.define('CreditoVehicular', {
     id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+    estado: { type: DataTypes.STRING(20), allowNull: false, defaultValue: 'Simulacion' }, // 'Simulacion' o 'Otorgado'
     cuota_inicial: { type: DataTypes.DECIMAL(12, 2), allowNull: false },
+    cuota_final_porcentaje: { type: DataTypes.DECIMAL(5, 2), allowNull: false, defaultValue: 30 },
     monto_financiado: { type: DataTypes.DECIMAL(12, 2), allowNull: false },
     tipo_moneda: { type: DataTypes.STRING(10), allowNull: false, defaultValue: 'PEN' },
     tipo_tasa: { type: DataTypes.STRING(10), allowNull: false },
@@ -56,11 +59,20 @@ const DatosSalida = sequelize.define('DatosSalida', {
 }, { tableName: 'datos_salida', timestamps: true });
 
 // Relaciones
-Cliente.belongsTo(Usuario, { foreignKey: 'ID_Usuario' });
+CreditoVehicular.belongsTo(Usuario, { foreignKey: 'ID_Usuario_Creador' });
+Usuario.hasMany(CreditoVehicular, { foreignKey: 'ID_Usuario_Creador' });
+
 CreditoVehicular.belongsTo(Cliente, { foreignKey: 'ID_Cliente' });
+Cliente.hasMany(CreditoVehicular, { foreignKey: 'ID_Cliente' });
+
 CreditoVehicular.belongsTo(Vehiculo, { foreignKey: 'ID_Vehiculo' });
+Vehiculo.hasOne(CreditoVehicular, { foreignKey: 'ID_Vehiculo' });
+
 CreditoVehicular.belongsTo(CostosAdicionales, { foreignKey: 'ID_Adicionales' });
-DatosSalida.belongsTo(CreditoVehicular, { foreignKey: 'ID_Credito' });
+CostosAdicionales.hasOne(CreditoVehicular, { foreignKey: 'ID_Adicionales' });
+
+DatosSalida.belongsTo(CreditoVehicular, { foreignKey: 'ID_Credito', onDelete: 'CASCADE' });
+CreditoVehicular.hasOne(DatosSalida, { foreignKey: 'ID_Credito' });
 
 module.exports = {
     sequelize, Usuario, Cliente, Vehiculo, CostosAdicionales, CreditoVehicular, DatosSalida
