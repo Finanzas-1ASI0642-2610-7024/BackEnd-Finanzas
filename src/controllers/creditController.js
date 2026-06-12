@@ -220,13 +220,19 @@ exports.exportarExcel = async (req, res) => {
         const workbook = new exceljs.Workbook();
         const sheet = workbook.addWorksheet('Reporte Simulacion');
 
-        // Agregar Logo/Imagen del auto si existe (base64)
         if (credito.Vehiculo && credito.Vehiculo.imagen && credito.Vehiculo.imagen.includes('base64,')) {
             try {
+                const mimeMatch = credito.Vehiculo.imagen.match(/data:image\/([a-zA-Z0-9]+);base64,/);
+                let ext = 'png';
+                if (mimeMatch && mimeMatch[1]) {
+                    ext = mimeMatch[1].toLowerCase();
+                    if (ext === 'jpg') ext = 'jpeg';
+                }
+
                 const base64Data = credito.Vehiculo.imagen.split('base64,')[1];
                 const imageId = workbook.addImage({
                     base64: base64Data,
-                    extension: 'png',
+                    extension: ext,
                 });
                 sheet.addImage(imageId, {
                     tl: { col: 6, row: 1 },
