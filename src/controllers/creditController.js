@@ -10,7 +10,7 @@ exports.simularCredito = async (req, res) => {
             tipo_tasa, tasa_interes, capitalizacion, plazo_meses, 
             tipo_gracia, periodos_gracia, 
             seguro_desgravamen, seguro_vehicular_anual, comisiones,
-            tasa_descuento_COK
+            tasa_descuento_COK, tipo_moneda
         } = req.body;
 
         const userId = req.headers['userid'];
@@ -121,7 +121,7 @@ exports.simularCredito = async (req, res) => {
 
         const creditData = {
             cuota_inicial, cuota_final_porcentaje, monto_financiado: monto_a_financiar,
-            tipo_tasa, tasa_interes, capitalizacion, plazo_meses,
+            tipo_tasa, tasa_interes, capitalizacion, plazo_meses, tipo_moneda: tipo_moneda || 'PEN',
             tipo_gracia, periodos_gracia, ID_Usuario_Creador: userId,
             ID_Cliente: cliente?.id, ID_Vehiculo: vehiculo.id, ID_Adicionales: adicionales.id
         };
@@ -243,30 +243,39 @@ exports.exportarExcel = async (req, res) => {
             }
         }
 
+        const moneda = credito.tipo_moneda === 'USD' ? '$' : 'S/';
+
         // Datos del Cliente
         sheet.getCell('A1').value = 'Datos del Cliente';
         sheet.getCell('A1').font = { bold: true };
-        sheet.getCell('A2').value = `Nombre: ${credito.Cliente?.nombre || 'N/A'}`;
+        sheet.getCell('A2').value = `Nombres: ${credito.Cliente?.nombre || ''} ${credito.Cliente?.apellido || ''}`;
         sheet.getCell('A3').value = `DNI: ${credito.Cliente?.dni || 'N/A'}`;
-        sheet.getCell('A4').value = `Dirección: ${credito.Cliente?.direccion || 'N/A'}`;
+        sheet.getCell('A4').value = `Celular: ${credito.Cliente?.celular || 'N/A'}`;
+        sheet.getCell('A5').value = `Dirección: ${credito.Cliente?.direccion || 'N/A'}`;
+        sheet.getCell('A6').value = `Ocupación: ${credito.Cliente?.ocupacion || 'N/A'}`;
+        sheet.getCell('A7').value = `Estado Civil: ${credito.Cliente?.estado_civil || 'N/A'}`;
+        sheet.getCell('A8').value = `Género: ${credito.Cliente?.genero || 'N/A'}`;
 
         // Datos del Vehículo
         sheet.getCell('D1').value = 'Datos del Vehículo';
         sheet.getCell('D1').font = { bold: true };
         sheet.getCell('D2').value = `Marca/Modelo: ${credito.Vehiculo?.marca} ${credito.Vehiculo?.modelo}`;
-        sheet.getCell('D3').value = `Precio: $${Number(credito.Vehiculo?.precio).toFixed(2)}`;
+        sheet.getCell('D3').value = `Estado: ${credito.Vehiculo?.estado || 'N/A'}`;
+        sheet.getCell('D4').value = `N° Serie: ${credito.Vehiculo?.numero_serie || 'N/A'}`;
+        sheet.getCell('D5').value = `Kilometraje: ${credito.Vehiculo?.kilometraje || 0} km`;
+        sheet.getCell('D6').value = `Precio: ${moneda}${Number(credito.Vehiculo?.precio).toFixed(2)}`;
 
         // Resultados Financieros
-        sheet.getCell('A6').value = 'Resultados';
-        sheet.getCell('A6').font = { bold: true };
-        sheet.getCell('A7').value = `TCEA: ${(credito.DatosSalida?.TCEA * 100).toFixed(2)}%`;
-        sheet.getCell('A8').value = `VAN: $${Number(credito.DatosSalida?.VAN).toFixed(2)}`;
-        sheet.getCell('A9').value = `Cuota Referencial: $${Number(credito.DatosSalida?.cuota_mensual).toFixed(2)}`;
+        sheet.getCell('A10').value = 'Resultados';
+        sheet.getCell('A10').font = { bold: true };
+        sheet.getCell('A11').value = `TCEA: ${(credito.DatosSalida?.TCEA * 100).toFixed(2)}%`;
+        sheet.getCell('A12').value = `VAN: ${moneda}${Number(credito.DatosSalida?.VAN).toFixed(2)}`;
+        sheet.getCell('A13').value = `Cuota Referencial: ${moneda}${Number(credito.DatosSalida?.cuota_mensual).toFixed(2)}`;
 
         // Espacio antes del cronograma
         sheet.addRow([]);
         
-        const tableRowStart = 11;
+        const tableRowStart = 15;
 
         sheet.getRow(tableRowStart).values = [
             'Mes', 'Saldo Inicial', 'Amortización', 'Interés', 
