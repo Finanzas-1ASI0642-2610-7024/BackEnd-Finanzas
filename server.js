@@ -3,15 +3,19 @@ const cors = require('cors');
 const sequelize = require('./src/config/database');
 const creditRoutes = require('./src/routes/creditRoutes');
 const userRoutes = require('./src/routes/userRoutes');
+const clientRoutes = require('./src/routes/clientRoutes');
+const vehicleRoutes = require('./src/routes/vehicleRoutes');
 const { Usuario } = require('./src/models'); 
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '50mb' })); // Increase limit for base64 images
 
 app.use('/api/credit', creditRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/auth', userRoutes);
+app.use('/api/clients', clientRoutes);
+app.use('/api/vehicles', vehicleRoutes);
 
 const PORT = process.env.PORT || 3000;
 

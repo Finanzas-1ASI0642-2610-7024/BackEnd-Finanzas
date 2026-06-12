@@ -5,54 +5,72 @@ const exceljs = require('exceljs');
 exports.simularCredito = async (req, res) => {
     try {
         const { 
-            precio_vehiculo, cuota_inicial, cuota_final_porcentaje, 
+            ID_Cliente, ID_Vehiculo, 
+            cuota_inicial, cuota_final_porcentaje, 
             tipo_tasa, tasa_interes, capitalizacion, plazo_meses, 
             tipo_gracia, periodos_gracia, 
             seguro_desgravamen, seguro_vehicular_anual, comisiones,
-            // Nuevos datos del cliente y vehiculo
-            cliente_nombre, cliente_dni, cliente_ingreso, cliente_edad,
-            vehiculo_marca, vehiculo_modelo, vehiculo_anio
+            tasa_descuento_COK
         } = req.body;
 
         const userId = req.headers['userid'];
 
-        // 1. Preparación Financiera
-        const monto_a_financiar = precio_vehiculo - cuota_inicial;
-        const cuota_final = precio_vehiculo * (cuota_final_porcentaje / 100);
-        const seguro_vehicular_mensual = seguro_vehicular_anual / 12;
+        const vehiculo = await Vehiculo.findByPk(ID_Vehiculo);
+        if(!vehiculo) return res.status(404).json({ success: false, message: 'Vehículo no encontrado' });
+        
+        const cliente = await Cliente.findByPk(ID_Cliente);
+        
+        const precio_vehiculo = vehiculo.precio;
+
+        // 1. Preparación Financiera con valores por defecto para evitar NaN
+        const precio_vehiculo_val = Number(precio_vehiculo) || 0;
+        const cuota_inicial_val = Number(cuota_inicial) || 0;
+        const cuota_final_porcentaje_val = Number(cuota_final_porcentaje) || 0;
+        const tasa_interes_val = Number(tasa_interes) || 0;
+        const plazo_meses_val = Number(plazo_meses) || 0;
+        const periodos_gracia_val = Number(periodos_gracia) || 0;
+        const seguro_desgravamen_val = Number(seguro_desgravamen) || 0;
+        const seguro_vehicular_anual_val = Number(seguro_vehicular_anual) || 0;
+        const comisiones_val = Number(comisiones) || 0;
+
+        const monto_a_financiar = precio_vehiculo_val - cuota_inicial_val;
+        const cuota_final = precio_vehiculo_val * (cuota_final_porcentaje_val / 100);
+        const seguro_vehicular_mensual = seguro_vehicular_anual_val / 12;
 
         let TEM = 0;
         if (tipo_tasa === 'TEA') {
-            TEM = Math.pow(1 + tasa_interes, 30 / 360) - 1;
+            TEM = Math.pow(1 + tasa_interes_val, 30 / 360) - 1;
         } else if (tipo_tasa === 'TNA') {
             let m = capitalizacion === 'Diaria' ? 360 : 12;
-            let tasa_cap = tasa_interes / m;
+            let tasa_cap = tasa_interes_val / m;
             let n_periodos = capitalizacion === 'Diaria' ? 30 : 1; 
             TEM = Math.pow(1 + tasa_cap, n_periodos) - 1;
         }
 
-        const VP_Balloon = cuota_final / Math.pow(1 + TEM, plazo_meses);
+        const VP_Balloon = cuota_final / Math.pow(1 + TEM, plazo_meses_val);
         let saldo_amortizable = monto_a_financiar - VP_Balloon;
         let saldo_actual = monto_a_financiar;
 
         let cronograma = [];
-        let flujos_caja = [-monto_a_financiar + (comisiones || 0)]; 
-        let plazos_regulares = plazo_meses - (periodos_gracia || 0);
+        let flujos_caja = [-monto_a_financiar + comisiones_val]; 
+        let plazos_regulares = plazo_meses_val - periodos_gracia_val;
 
         const calcularCuotaFija = (saldo, n, tasa) => {
             if(tasa === 0) return saldo / n;
             return saldo * (tasa * Math.pow(1 + tasa, n)) / (Math.pow(1 + tasa, n) - 1);
         };
 
-        for (let i = 1; i <= plazo_meses; i++) {
+        let tasa_ajustada = TEM + seguro_desgravamen_val;
+
+        for (let i = 1; i <= plazo_meses_val; i++) {
             let interes = saldo_actual * TEM;
-            let s_desgravamen = saldo_actual * seguro_desgravamen;
-            let s_vehicular = precio_vehiculo * seguro_vehicular_mensual;
+            let s_desgravamen = saldo_actual * seguro_desgravamen_val;
+            let s_vehicular = precio_vehiculo_val * seguro_vehicular_mensual;
             let cuota_interes = interes;
             let amortizacion = 0;
             let cuota_total = 0;
 
-            if (i <= (periodos_gracia || 0)) {
+            if (i <= periodos_gracia_val) {
                 if (tipo_gracia === 'Total') {
                     amortizacion = -interes; 
                     saldo_actual += interes;
@@ -62,17 +80,17 @@ exports.simularCredito = async (req, res) => {
                     cuota_total = cuota_interes + s_desgravamen + s_vehicular;
                 }
             } else {
-                if (i === (periodos_gracia || 0) + 1) {
-                    let nuevo_vp_balloon = cuota_final / Math.pow(1 + TEM, plazo_meses - (periodos_gracia || 0));
+                if (i === periodos_gracia_val + 1) {
+                    let nuevo_vp_balloon = cuota_final / Math.pow(1 + TEM, plazo_meses_val - periodos_gracia_val);
                     saldo_amortizable = saldo_actual - nuevo_vp_balloon;
                 }
-                let cuota_francesa = calcularCuotaFija(saldo_amortizable, plazos_regulares, TEM);
-                amortizacion = cuota_francesa - interes;
-                cuota_total = cuota_francesa + s_desgravamen + s_vehicular;
+                let cuota_fija = calcularCuotaFija(saldo_amortizable, plazos_regulares, tasa_ajustada);
+                amortizacion = cuota_fija - interes - s_desgravamen;
+                cuota_total = cuota_fija + s_vehicular;
                 saldo_actual -= amortizacion;
             }
 
-            if (i === plazo_meses) {
+            if (i === plazo_meses_val) {
                 cuota_total += cuota_final;
                 amortizacion += cuota_final;
                 saldo_actual = 0;
@@ -87,27 +105,13 @@ exports.simularCredito = async (req, res) => {
             flujos_caja.push(cuota_total);
         }
 
-        const tasa_descuento_COK = 0.10;
-        const TEM_COK = Math.pow(1 + tasa_descuento_COK, 1 / 12) - 1;
+        const tasa_descuento_COK_val = Number(tasa_descuento_COK) || 0.10;
+        const TEM_COK = Math.pow(1 + tasa_descuento_COK_val, 1 / 12) - 1;
         const TIR_mensual = calcularTIR(flujos_caja); 
         const TCEA = Math.pow(1 + TIR_mensual, 12) - 1;
         const VAN = calcularVAN(TEM_COK, flujos_caja);
 
         // 2. Persistencia en Base de Datos
-        // Guardar Cliente (O buscarlo por DNI)
-        let cliente;
-        if(cliente_dni) {
-            [cliente] = await Cliente.findOrCreate({
-                where: { dni: cliente_dni },
-                defaults: { nombre: cliente_nombre, ingreso_mensual: cliente_ingreso, edad: cliente_edad }
-            });
-        }
-
-        const vehiculo = await Vehiculo.create({
-            marca: vehiculo_marca || 'N/A', modelo: vehiculo_modelo || 'N/A', 
-            anio: vehiculo_anio || 2024, precio: precio_vehiculo
-        });
-
         const adicionales = await CostosAdicionales.create({
             seguro_desgravamen, seguro_vehicular: seguro_vehicular_anual, comisiones
         });
@@ -214,17 +218,65 @@ exports.exportarExcel = async (req, res) => {
         if(!credito) return res.status(404).send('Crédito no encontrado');
 
         const workbook = new exceljs.Workbook();
-        const sheet = workbook.addWorksheet('Cronograma');
+        const sheet = workbook.addWorksheet('Reporte Simulacion');
 
+        // Agregar Logo/Imagen del auto si existe (base64)
+        if (credito.Vehiculo && credito.Vehiculo.imagen && credito.Vehiculo.imagen.includes('base64,')) {
+            try {
+                const base64Data = credito.Vehiculo.imagen.split('base64,')[1];
+                const imageId = workbook.addImage({
+                    base64: base64Data,
+                    extension: 'png',
+                });
+                sheet.addImage(imageId, {
+                    tl: { col: 6, row: 1 },
+                    ext: { width: 150, height: 100 }
+                });
+            } catch (e) {
+                console.error('Error adding image to excel:', e);
+            }
+        }
+
+        // Datos del Cliente
+        sheet.getCell('A1').value = 'Datos del Cliente';
+        sheet.getCell('A1').font = { bold: true };
+        sheet.getCell('A2').value = `Nombre: ${credito.Cliente?.nombre || 'N/A'}`;
+        sheet.getCell('A3').value = `DNI: ${credito.Cliente?.dni || 'N/A'}`;
+        sheet.getCell('A4').value = `Dirección: ${credito.Cliente?.direccion || 'N/A'}`;
+
+        // Datos del Vehículo
+        sheet.getCell('D1').value = 'Datos del Vehículo';
+        sheet.getCell('D1').font = { bold: true };
+        sheet.getCell('D2').value = `Marca/Modelo: ${credito.Vehiculo?.marca} ${credito.Vehiculo?.modelo}`;
+        sheet.getCell('D3').value = `Precio: $${Number(credito.Vehiculo?.precio).toFixed(2)}`;
+
+        // Resultados Financieros
+        sheet.getCell('A6').value = 'Resultados';
+        sheet.getCell('A6').font = { bold: true };
+        sheet.getCell('A7').value = `TCEA: ${(credito.DatosSalida?.TCEA * 100).toFixed(2)}%`;
+        sheet.getCell('A8').value = `VAN: $${Number(credito.DatosSalida?.VAN).toFixed(2)}`;
+        sheet.getCell('A9').value = `Cuota Referencial: $${Number(credito.DatosSalida?.cuota_mensual).toFixed(2)}`;
+
+        // Espacio antes del cronograma
+        sheet.addRow([]);
+        
+        const tableRowStart = 11;
+
+        sheet.getRow(tableRowStart).values = [
+            'Mes', 'Saldo Inicial', 'Amortización', 'Interés', 
+            'Seguro Desgravamen', 'Seguro Vehicular', 'Cuota', 'Saldo Final'
+        ];
+        sheet.getRow(tableRowStart).font = { bold: true };
+        
         sheet.columns = [
-            { header: 'Mes', key: 'mes', width: 10 },
-            { header: 'Saldo Inicial', key: 'saldo_inicial', width: 15 },
-            { header: 'Amortización', key: 'amortizacion', width: 15 },
-            { header: 'Interés', key: 'interes', width: 15 },
-            { header: 'Seguro Desgravamen', key: 'seguro_desgravamen', width: 20 },
-            { header: 'Seguro Vehicular', key: 'seguro_vehicular', width: 20 },
-            { header: 'Cuota', key: 'cuota', width: 15 },
-            { header: 'Saldo Final', key: 'saldo_final', width: 15 },
+            { key: 'mes', width: 10 },
+            { key: 'saldo_inicial', width: 15 },
+            { key: 'amortizacion', width: 15 },
+            { key: 'interes', width: 15 },
+            { key: 'seguro_desgravamen', width: 20 },
+            { key: 'seguro_vehicular', width: 20 },
+            { key: 'cuota', width: 15 },
+            { key: 'saldo_final', width: 15 },
         ];
 
         let cronograma = [];

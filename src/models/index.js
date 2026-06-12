@@ -12,6 +12,7 @@ const Cliente = sequelize.define('Cliente', {
     id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
     nombre: { type: DataTypes.STRING, allowNull: false },
     dni: { type: DataTypes.STRING(8), allowNull: false, unique: true },
+    direccion: { type: DataTypes.STRING, allowNull: true },
     ingreso_mensual: { type: DataTypes.DECIMAL(10, 2), allowNull: false },
     edad: { type: DataTypes.INTEGER, allowNull: false }
 }, { tableName: 'clientes', timestamps: false });
@@ -22,7 +23,7 @@ const Vehiculo = sequelize.define('Vehiculo', {
     modelo: { type: DataTypes.STRING, allowNull: false },
     anio: { type: DataTypes.INTEGER, allowNull: false },
     precio: { type: DataTypes.DECIMAL(12, 2), allowNull: false },
-    imagen: { type: DataTypes.STRING, allowNull: true }
+    imagen: { type: DataTypes.TEXT, allowNull: true } // TEXT for base64 strings
 }, { tableName: 'vehiculos', timestamps: false });
 
 const CostosAdicionales = sequelize.define('CostosAdicionales', {
