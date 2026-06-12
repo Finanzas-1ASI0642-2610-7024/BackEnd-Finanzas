@@ -63,6 +63,7 @@ exports.simularCredito = async (req, res) => {
         let tasa_ajustada = TEM + seguro_desgravamen_val;
 
         for (let i = 1; i <= plazo_meses_val; i++) {
+            let saldo_inicial_mes = saldo_actual;
             let interes = saldo_actual * TEM;
             let s_desgravamen = saldo_actual * seguro_desgravamen_val;
             let s_vehicular = precio_vehiculo_val * seguro_vehicular_mensual;
@@ -91,13 +92,14 @@ exports.simularCredito = async (req, res) => {
             }
 
             if (i === plazo_meses_val) {
-                cuota_total += cuota_final;
-                amortizacion += cuota_final;
+                // Corrección matemática para cuadrar a cero exacto en el último mes
+                amortizacion = saldo_inicial_mes;
+                cuota_total = amortizacion + cuota_interes + s_desgravamen + s_vehicular;
                 saldo_actual = 0;
             }
 
             cronograma.push({
-                mes: i, saldo_inicial: saldo_actual + amortizacion, amortizacion,
+                mes: i, saldo_inicial: saldo_inicial_mes, amortizacion,
                 interes: cuota_interes, seguro_desgravamen: s_desgravamen,
                 seguro_vehicular: s_vehicular, cuota: cuota_total,
                 saldo_final: saldo_actual < 0.01 ? 0 : saldo_actual
