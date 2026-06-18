@@ -36,7 +36,7 @@ exports.simularCredito = async (req, res) => {
         const numero_anios_val = Number(numero_anios) || 0;
         const frecuencia_pago_dias_val = Number(frecuencia_pago_dias) || 30;
         const dias_por_anio_val = Number(dias_por_anio) || 360;
-        const plazo_total_periodos = (numero_anios_val * dias_por_anio_val) / frecuencia_pago_dias_val;
+        const plazo_total_periodos = Math.round((numero_anios_val * dias_por_anio_val) / frecuencia_pago_dias_val);
         
         const periodos_gracia_val = Number(periodos_gracia) || 0;
         const seguro_desgravamen_val = Number(seguro_desgravamen) || 0;
