@@ -399,10 +399,6 @@ exports.exportarExcel = async (req, res) => {
             { key: 'saldo_final', width: 15 },
         ];
 
-        let cronograma = [];
-        if (credito.DatosSalida && credito.DatosSalida.cronograma_pagos_json) {
-            cronograma = JSON.parse(credito.DatosSalida.cronograma_pagos_json);
-        }
 
         cronograma.forEach(row => {
             sheet.addRow({
