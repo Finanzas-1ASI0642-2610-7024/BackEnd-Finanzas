@@ -282,8 +282,121 @@ exports.exportarExcel = async (req, res) => {
         if(!credito) return res.status(404).send('Crédito no encontrado');
 
         const workbook = new exceljs.Workbook();
-        const sheet = workbook.addWorksheet('Reporte Simulacion');
+        workbook.creator = 'AutoTech Finanzas';
+        workbook.created = new Date();
+        const sheet = workbook.addWorksheet('Reporte de Crédito', {
+            views: [{ showGridLines: false }]
+        });
 
+        const moneda = credito.tipo_moneda === 'USD' ? '$' : 'S/';
+        const monedaFormat = moneda === '$' ? '"$"#,##0.00' : '"S/"#,##0.00';
+
+        // ═══════════════════════════════════════════════════════════════
+        // PALETA DE COLORES CORPORATIVA FORMAL
+        // ═══════════════════════════════════════════════════════════════
+        const CORP_BLUE = 'FF003366';   // Azul corporativo oscuro
+        const CORP_LIGHT = 'FFF0F4F8';  // Azul muy claro para fondos
+        const HEADER_BG = 'FFEAECEE';   // Gris claro para encabezados
+        const TEXT_MAIN = 'FF1C2833';   // Casi negro para texto principal
+        const TEXT_MUTED = 'FF566573';  // Gris para etiquetas
+        const WHITE = 'FFFFFFFF';       // Blanco
+
+        // ═══════════════════════════════════════════════════════════════
+        // ANCHOS DE COLUMNA EQUILIBRADOS PARA LA TABLA DE 8 COLUMNAS
+        // ═══════════════════════════════════════════════════════════════
+        sheet.columns = [
+            { key: 'A', width: 8 },   // N°
+            { key: 'B', width: 20 },  // Saldo Inicial
+            { key: 'C', width: 20 },  // Amortización
+            { key: 'D', width: 18 },  // Interés
+            { key: 'E', width: 22 },  // Seg. Desgravamen
+            { key: 'F', width: 20 },  // Seg. Vehicular
+            { key: 'G', width: 18 },  // Cuota Total
+            { key: 'H', width: 20 }   // Saldo Final
+        ];
+
+        // ═══════════════════════════════════════════════════════════════
+        // TÍTULO PRINCIPAL (filas 1-4)
+        // ═══════════════════════════════════════════════════════════════
+        sheet.mergeCells('A1:H2');
+        const titleCell = sheet.getCell('A1');
+        titleCell.value = 'REPORTE DE SIMULACIÓN DE CRÉDITO VEHICULAR';
+        titleCell.font = { name: 'Arial', size: 16, bold: true, color: { argb: CORP_BLUE } };
+        titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
+        
+        sheet.mergeCells('A3:H3');
+        const subtitleCell = sheet.getCell('A3');
+        subtitleCell.value = `Generado el: ${new Date().toLocaleDateString('es-PE')} | Confidencial`;
+        subtitleCell.font = { name: 'Arial', size: 10, italic: true, color: { argb: TEXT_MUTED } };
+        subtitleCell.alignment = { vertical: 'middle', horizontal: 'center' };
+        
+        // Línea divisoria
+        sheet.getRow(4).height = 5;
+        sheet.mergeCells('A4:H4');
+        sheet.getCell('A4').border = { bottom: { style: 'medium', color: { argb: CORP_BLUE } } };
+
+        sheet.getRow(5).height = 15; // Espacio
+
+        // ═══════════════════════════════════════════════════════════════
+        // FUNCIONES HELPER FORMALES
+        // ═══════════════════════════════════════════════════════════════
+        const crearEncabezadoSeccion = (rangoMerge, texto) => {
+            sheet.mergeCells(rangoMerge);
+            const celdaInicio = rangoMerge.split(':')[0];
+            const cell = sheet.getCell(celdaInicio);
+            cell.value = texto;
+            cell.font = { name: 'Arial', size: 11, bold: true, color: { argb: CORP_BLUE } };
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: HEADER_BG } };
+            cell.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+            cell.border = { 
+                top: { style: 'thin', color: { argb: CORP_BLUE } },
+                bottom: { style: 'thin', color: { argb: CORP_BLUE } }
+            };
+        };
+
+        const agregarDatoFormal = (rangoEtiqueta, rangoValor, etiqueta, valor, isCurrency = false) => {
+            sheet.mergeCells(rangoEtiqueta);
+            sheet.mergeCells(rangoValor);
+            const celdaEtiqueta = rangoEtiqueta.split(':')[0];
+            const celdaValor = rangoValor.split(':')[0];
+
+            const lblCell = sheet.getCell(celdaEtiqueta);
+            lblCell.value = etiqueta;
+            lblCell.font = { name: 'Arial', size: 10, bold: true, color: { argb: TEXT_MUTED } };
+            lblCell.alignment = { vertical: 'middle', horizontal: 'left' };
+            lblCell.border = { bottom: { style: 'hair', color: { argb: HEADER_BG } } };
+
+            const valCell = sheet.getCell(celdaValor);
+            valCell.value = valor;
+            valCell.font = { name: 'Arial', size: 10, color: { argb: TEXT_MAIN } };
+            valCell.alignment = { vertical: 'middle', horizontal: 'right' };
+            valCell.border = { bottom: { style: 'hair', color: { argb: HEADER_BG } } };
+            if (isCurrency && typeof valor === 'number') {
+                valCell.numFmt = monedaFormat;
+            }
+        };
+
+        // ═══════════════════════════════════════════════════════════════
+        // SECCIÓN 1: DATOS CLIENTE Y VEHÍCULO (filas 6-11)
+        // ═══════════════════════════════════════════════════════════════
+        sheet.getRow(6).height = 24;
+        crearEncabezadoSeccion('A6:D6', 'DATOS DEL CLIENTE');
+        crearEncabezadoSeccion('E6:H6', 'DATOS DEL VEHÍCULO');
+
+        [7, 8, 9, 10, 11].forEach(r => sheet.getRow(r).height = 20);
+
+        agregarDatoFormal('A7:B7', 'C7:D7', 'Nombres y Apellidos:', `${credito.Cliente?.nombre || ''} ${credito.Cliente?.apellido || ''}`);
+        agregarDatoFormal('A8:B8', 'C8:D8', 'Documento de Identidad:', credito.Cliente?.dni || 'N/A');
+        agregarDatoFormal('A9:B9', 'C9:D9', 'Teléfono / Celular:', credito.Cliente?.celular || 'N/A');
+        agregarDatoFormal('A10:B10', 'C10:D10', 'Ocupación:', credito.Cliente?.ocupacion || 'N/A');
+        agregarDatoFormal('A11:B11', 'C11:D11', 'Dirección:', credito.Cliente?.direccion || 'N/A');
+
+        agregarDatoFormal('E7:F7', 'G7:H7', 'Marca / Modelo:', `${credito.Vehiculo?.marca} ${credito.Vehiculo?.modelo}`);
+        agregarDatoFormal('E8:F8', 'G8:H8', 'Condición:', credito.Vehiculo?.estado || 'N/A');
+        agregarDatoFormal('E9:F9', 'G9:H9', 'Kilometraje:', `${Number(credito.Vehiculo?.kilometraje || 0).toLocaleString()} km`);
+        agregarDatoFormal('E10:F10', 'G10:H10', 'Precio del Vehículo:', Number(credito.Vehiculo?.precio), true);
+        
+        // Imagen
         if (credito.Vehiculo && credito.Vehiculo.imagen && credito.Vehiculo.imagen.includes('base64,')) {
             try {
                 const mimeMatch = credito.Vehiculo.imagen.match(/data:image\/([a-zA-Z0-9]+);base64,/);
@@ -292,44 +405,22 @@ exports.exportarExcel = async (req, res) => {
                     ext = mimeMatch[1].toLowerCase();
                     if (ext === 'jpg') ext = 'jpeg';
                 }
-
                 const base64Data = credito.Vehiculo.imagen.split('base64,')[1];
-                const imageId = workbook.addImage({
-                    base64: base64Data,
-                    extension: ext,
-                });
+                const imageId = workbook.addImage({ base64: base64Data, extension: ext });
                 sheet.addImage(imageId, {
-                    tl: { col: 6, row: 1 },
-                    ext: { width: 150, height: 100 }
+                    tl: { col: 4.5, row: 6.2 },
+                    ext: { width: 140, height: 85 }
                 });
             } catch (e) {
                 console.error('Error adding image to excel:', e);
             }
         }
 
-        const moneda = credito.tipo_moneda === 'USD' ? '$' : 'S/';
+        sheet.getRow(12).height = 15; // Espacio
 
-        // Datos del Cliente
-        sheet.getCell('A1').value = 'Datos del Cliente';
-        sheet.getCell('A1').font = { bold: true };
-        sheet.getCell('A2').value = `Nombres: ${credito.Cliente?.nombre || ''} ${credito.Cliente?.apellido || ''}`;
-        sheet.getCell('A3').value = `DNI: ${credito.Cliente?.dni || 'N/A'}`;
-        sheet.getCell('A4').value = `Celular: ${credito.Cliente?.celular || 'N/A'}`;
-        sheet.getCell('A5').value = `Dirección: ${credito.Cliente?.direccion || 'N/A'}`;
-        sheet.getCell('A6').value = `Ocupación: ${credito.Cliente?.ocupacion || 'N/A'}`;
-        sheet.getCell('A7').value = `Estado Civil: ${credito.Cliente?.estado_civil || 'N/A'}`;
-        sheet.getCell('A8').value = `Género: ${credito.Cliente?.genero || 'N/A'}`;
-
-        // Datos del Vehículo
-        sheet.getCell('D1').value = 'Datos del Vehículo';
-        sheet.getCell('D1').font = { bold: true };
-        sheet.getCell('D2').value = `Marca/Modelo: ${credito.Vehiculo?.marca} ${credito.Vehiculo?.modelo}`;
-        sheet.getCell('D3').value = `Estado: ${credito.Vehiculo?.estado || 'N/A'}`;
-        sheet.getCell('D4').value = `N° Serie: ${credito.Vehiculo?.numero_serie || 'N/A'}`;
-        sheet.getCell('D5').value = `Kilometraje: ${credito.Vehiculo?.kilometraje || 0} km`;
-        sheet.getCell('D6').value = `Precio: ${moneda}${Number(credito.Vehiculo?.precio).toFixed(2)}`;
-
-        // Resultados Financieros y Costos Iniciales
+        // ═══════════════════════════════════════════════════════════════
+        // CÁLCULOS FINANCIEROS
+        // ═══════════════════════════════════════════════════════════════
         let cronograma = [];
         if (credito.DatosSalida && credito.DatosSalida.cronograma_pagos_json) {
             cronograma = JSON.parse(credito.DatosSalida.cronograma_pagos_json);
@@ -341,100 +432,136 @@ exports.exportarExcel = async (req, res) => {
             acc.seguro_desgravamen += curr.seguro_desgravamen;
             acc.seguro_vehicular += curr.seguro_vehicular;
             return acc;
-        }, {
-            interes: 0, amortizacion: 0, seguro_desgravamen: 0, seguro_vehicular: 0
-        });
+        }, { interes: 0, amortizacion: 0, seguro_desgravamen: 0, seguro_vehicular: 0 });
 
-        // Sumar costos periodicos multiplicados por el nro de cuotas
         const numero_cuotas = cronograma.length;
         const comisiones_totales = (Number(credito.CostosAdicionale?.comisiones) || 0) * numero_cuotas;
         const portes_gastos_totales = ((Number(credito.CostosAdicionale?.portes) || 0) + (Number(credito.CostosAdicionale?.gastos_administracion) || 0)) * numero_cuotas;
-
         const tasa_descuento_COK_val = Number(credito.tasa_descuento_COK) || 0.10;
         const frecuencia_pago_dias_val = Number(credito.frecuencia_pago_dias) || 30;
         const dias_por_anio_val = Number(credito.dias_por_anio) || 360;
         const TEP_COK = Math.pow(1 + tasa_descuento_COK_val, frecuencia_pago_dias_val / dias_por_anio_val) - 1;
-
-        sheet.getCell('A10').value = 'Resumen del Financiamiento';
-        sheet.getCell('A10').font = { bold: true };
-        sheet.getCell('A11').value = `Saldo a financiar: ${moneda}${Number(credito.DatosSalida?.monto_financiado).toFixed(2)}`;
-        // Monto del prestamo = monto a financiar + gastos iniciales
         const gastos_iniciales = (Number(credito.CostosAdicionale?.tasacion) || 0) +
                                  (Number(credito.CostosAdicionale?.comision_estudio) || 0) +
                                  (Number(credito.CostosAdicionale?.comision_activacion) || 0) +
                                  (Number(credito.CostosAdicionale?.costos_notariales) || 0) +
                                  (Number(credito.CostosAdicionale?.costos_registrales) || 0);
         const monto_del_prestamo = Number(credito.DatosSalida?.monto_financiado) + gastos_iniciales;
-        sheet.getCell('A12').value = `Monto del préstamo: ${moneda}${monto_del_prestamo.toFixed(2)}`;
-        sheet.getCell('A13').value = `Cuota Referencial: ${moneda}${Number(credito.DatosSalida?.cuota_mensual).toFixed(2)}`;
-        
-        sheet.getCell('D10').value = 'Gastos Iniciales y Moneda';
-        sheet.getCell('D10').font = { bold: true };
-        sheet.getCell('D11').value = `Tipo de Cambio: ${Number(credito.tipo_cambio || 1).toFixed(4)}`;
-        sheet.getCell('D12').value = `Tasación: ${moneda}${Number(credito.CostosAdicionale?.tasacion || 0).toFixed(2)}`;
-        sheet.getCell('D13').value = `Comisión Estudio: ${moneda}${Number(credito.CostosAdicionale?.comision_estudio || 0).toFixed(2)}`;
-        sheet.getCell('D14').value = `Comisión Activación: ${moneda}${Number(credito.CostosAdicionale?.comision_activacion || 0).toFixed(2)}`;
-        sheet.getCell('D15').value = `Notariales/Registrales: ${moneda}${Number((Number(credito.CostosAdicionale?.costos_notariales) || 0) + (Number(credito.CostosAdicionale?.costos_registrales) || 0)).toFixed(2)}`;
 
-        sheet.getCell('G10').value = 'Indicadores de Rentabilidad';
-        sheet.getCell('G10').font = { bold: true };
-        sheet.getCell('G11').value = `Tasa de Descuento: ${(Number(TEP_COK || 0) * 100).toFixed(4)}%`;
-        sheet.getCell('G12').value = `TIR (Periodo): ${(Number(credito.DatosSalida?.TIR || 0) * 100).toFixed(4)}%`;
-        sheet.getCell('G13').value = `TCEA: ${(Number(credito.DatosSalida?.TCEA || 0) * 100).toFixed(4)}%`;
-        sheet.getCell('G14').value = `VAN: ${moneda}${Number(credito.DatosSalida?.VAN || 0).toFixed(2)}`;
+        // ═══════════════════════════════════════════════════════════════
+        // SECCIÓN 2: CONDICIONES DEL CRÉDITO (filas 13-17)
+        // ═══════════════════════════════════════════════════════════════
+        sheet.getRow(13).height = 24;
+        crearEncabezadoSeccion('A13:H13', 'CONDICIONES DEL CRÉDITO Y GASTOS');
 
-        sheet.getCell('A16').value = 'Totales de Costos y Gastos';
-        sheet.getCell('A16').font = { bold: true };
-        sheet.getCell('A17').value = `Intereses Totales: ${moneda}${totales.interes.toFixed(2)}`;
-        sheet.getCell('A18').value = `Amortización Capital: ${moneda}${totales.amortizacion.toFixed(2)}`;
-        sheet.getCell('D17').value = `Seguro Desgravamen: ${moneda}${totales.seguro_desgravamen.toFixed(2)}`;
-        sheet.getCell('D18').value = `Seguro Riesgo: ${moneda}${totales.seguro_vehicular.toFixed(2)}`;
-        sheet.getCell('G17').value = `Comisiones Periódicas: ${moneda}${comisiones_totales.toFixed(2)}`;
-        sheet.getCell('G18').value = `Portes y Gastos Adm.: ${moneda}${portes_gastos_totales.toFixed(2)}`;
+        [14, 15, 16, 17].forEach(r => sheet.getRow(r).height = 20);
 
-        // Espacio antes del cronograma
-        sheet.addRow([]);
-        
+        // Columna 1
+        agregarDatoFormal('A14:B14', 'C14:C14', 'Monto a Financiar:', Number(credito.DatosSalida?.monto_financiado), true);
+        agregarDatoFormal('A15:B15', 'C15:C15', 'Gastos Iniciales:', gastos_iniciales, true);
+        agregarDatoFormal('A16:B16', 'C16:C16', 'Monto Total Préstamo:', monto_del_prestamo, true);
+        agregarDatoFormal('A17:B17', 'C17:C17', 'N° de Cuotas:', numero_cuotas);
+
+        // Columna 2
+        agregarDatoFormal('D14:E14', 'F14:F14', 'Tasa Descuento (TEP):', `${(TEP_COK * 100).toFixed(4)}%`);
+        agregarDatoFormal('D15:E15', 'F15:F15', 'TIR Periodo:', `${(Number(credito.DatosSalida?.TIR || 0) * 100).toFixed(4)}%`);
+        agregarDatoFormal('D16:E16', 'F16:F16', 'TCEA:', `${(Number(credito.DatosSalida?.TCEA || 0) * 100).toFixed(4)}%`);
+        agregarDatoFormal('D17:E17', 'F17:F17', 'VAN:', Number(credito.DatosSalida?.VAN || 0), true);
+
+        // Columna 3
+        agregarDatoFormal('G14:G14', 'H14:H14', 'Intereses Totales:', totales.interes, true);
+        agregarDatoFormal('G15:G15', 'H15:H15', 'Seguro Desgravamen:', totales.seguro_desgravamen, true);
+        agregarDatoFormal('G16:G16', 'H16:H16', 'Seguro Vehicular:', totales.seguro_vehicular, true);
+        agregarDatoFormal('G17:G17', 'H17:H17', 'Portes/Comisiones:', comisiones_totales + portes_gastos_totales, true);
+
+        sheet.getRow(18).height = 15; // Espacio
+
+        // ═══════════════════════════════════════════════════════════════
+        // CRONOGRAMA DE PAGOS (fila 19+)
+        // ═══════════════════════════════════════════════════════════════
         const tableRowStart = 20;
 
+        // Título del cronograma
+        sheet.getRow(19).height = 24;
+        crearEncabezadoSeccion('A19:H19', 'CRONOGRAMA DE PAGOS');
+
+        // Header de tabla
+        sheet.getRow(tableRowStart).height = 30;
         sheet.getRow(tableRowStart).values = [
-            'Periodo', 'Saldo Inicial', 'Amortización', 'Interés', 
-            'Seguro Desgravamen', 'Seguro Vehicular', 'Cuota', 'Saldo Final'
-        ];
-        sheet.getRow(tableRowStart).font = { bold: true };
-        
-        sheet.columns = [
-            { key: 'mes', width: 10 },
-            { key: 'saldo_inicial', width: 15 },
-            { key: 'amortizacion', width: 15 },
-            { key: 'interes', width: 15 },
-            { key: 'seguro_desgravamen', width: 20 },
-            { key: 'seguro_vehicular', width: 20 },
-            { key: 'cuota', width: 15 },
-            { key: 'saldo_final', width: 15 },
+            'N°', 'Saldo Inicial', 'Amortización', 'Interés',
+            'Seg. Desgravamen', 'Seg. Vehicular', 'Cuota Total', 'Saldo Final'
         ];
 
+        const headerRow = sheet.getRow(tableRowStart);
+        headerRow.eachCell((cell) => {
+            cell.font = { name: 'Arial', size: 10, bold: true, color: { argb: WHITE } };
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: CORP_BLUE } };
+            cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+            cell.border = {
+                right: { style: 'thin', color: { argb: WHITE } }
+            };
+        });
 
-        cronograma.forEach(row => {
-            sheet.addRow({
-                mes: row.mes,
-                saldo_inicial: Number(row.saldo_inicial).toFixed(2),
-                amortizacion: Number(row.amortizacion).toFixed(2),
-                interes: Number(row.interes).toFixed(2),
-                seguro_desgravamen: Number(row.seguro_desgravamen).toFixed(2),
-                seguro_vehicular: Number(row.seguro_vehicular).toFixed(2),
-                cuota: Number(row.cuota).toFixed(2),
-                saldo_final: Number(row.saldo_final).toFixed(2)
+        // Filas de datos del cronograma
+        cronograma.forEach((row, index) => {
+            const dataRow = sheet.getRow(tableRowStart + 1 + index);
+            dataRow.height = 20;
+            dataRow.values = [
+                row.mes,
+                Number(row.saldo_inicial),
+                Number(row.amortizacion),
+                Number(row.interes),
+                Number(row.seguro_desgravamen),
+                Number(row.seguro_vehicular),
+                Number(row.cuota),
+                Number(row.saldo_final)
+            ];
+
+            const isEven = index % 2 === 0;
+            const rowBg = isEven ? WHITE : CORP_LIGHT;
+
+            dataRow.eachCell((cell, colNumber) => {
+                cell.font = { name: 'Arial', size: 10, color: { argb: TEXT_MAIN } };
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowBg } };
+                cell.alignment = { vertical: 'middle', horizontal: 'right' };
+                cell.border = {
+                    bottom: { style: 'hair', color: { argb: HEADER_BG } },
+                    right: { style: 'hair', color: { argb: WHITE } },
+                    left: { style: 'hair', color: { argb: WHITE } }
+                };
+                
+                if (colNumber === 1) {
+                    cell.alignment = { vertical: 'middle', horizontal: 'center' };
+                    cell.font = { name: 'Arial', size: 10, bold: true, color: { argb: TEXT_MUTED } };
+                } else {
+                    cell.numFmt = monedaFormat;
+                }
             });
         });
 
+        // Línea divisoria de cierre del cronograma
+        const closingRow = tableRowStart + 1 + cronograma.length;
+        sheet.getRow(closingRow).height = 6;
+        sheet.mergeCells(`A${closingRow}:H${closingRow}`);
+        sheet.getCell(`A${closingRow}`).border = { top: { style: 'medium', color: { argb: CORP_BLUE } } };
+
+        // Pie de página
+        const footerRow = closingRow + 1;
+        sheet.getRow(footerRow).height = 25;
+        sheet.mergeCells(`A${footerRow}:H${footerRow}`);
+        const footerCell = sheet.getCell(`A${footerRow}`);
+        footerCell.value = `Documento generado automáticamente por AutoTech Finanzas  ·  ${new Date().toLocaleDateString('es-PE', { day: '2-digit', month: 'long', year: 'numeric' })}  ·  Confidencial`;
+        footerCell.font = { name: 'Arial', size: 8, italic: true, color: { argb: TEXT_MUTED } };
+        footerCell.alignment = { vertical: 'middle', horizontal: 'center' };
+
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        res.setHeader('Content-Disposition', `attachment; filename=Simulacion_${id}.xlsx`);
+        res.setHeader('Content-Disposition', `attachment; filename=AutoTech_Credito_${id}.xlsx`);
 
         await workbook.xlsx.write(res);
         res.end();
     } catch (error) {
-        return res.status(500).send(error.message);
+        console.error(error);
+        return res.status(500).send('Error interno del servidor al exportar excel');
     }
 };
 
