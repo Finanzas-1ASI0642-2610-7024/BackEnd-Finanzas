@@ -236,7 +236,7 @@ exports.getHistorial = async (req, res) => {
 
         const creditos = await CreditoVehicular.findAll({
             where: whereClause,
-            include: [Cliente, Vehiculo, DatosSalida],
+            include: [Cliente, Vehiculo, DatosSalida, Usuario],
             order: [['createdAt', 'DESC']]
         });
 
