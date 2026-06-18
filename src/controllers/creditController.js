@@ -131,7 +131,7 @@ exports.simularCredito = async (req, res) => {
         const creditData = {
             cuota_inicial, cuota_final_porcentaje, monto_financiado: monto_a_financiar,
             tipo_tasa, tasa_interes, capitalizacion, plazo_meses, tipo_moneda: tipo_moneda || 'PEN',
-            tipo_cambio: tc,
+            tipo_cambio: tc, tasa_descuento_COK: tasa_descuento_COK_val,
             tipo_gracia, periodos_gracia, ID_Usuario_Creador: userId,
             ID_Cliente: cliente?.id, ID_Vehiculo: vehiculo.id, ID_Adicionales: adicionales.id
         };
