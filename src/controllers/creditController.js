@@ -6,12 +6,14 @@ exports.simularCredito = async (req, res) => {
     try {
         const { 
             ID_Cliente, ID_Vehiculo, 
-            cuota_inicial, cuota_final_porcentaje, 
-            tipo_tasa, tasa_interes, capitalizacion, plazo_meses, 
+            cuota_inicial_porcentaje, cuota_final_porcentaje, 
+            tipo_tasa, tasa_interes, capitalizacion, numero_anios, 
+            frecuencia_pago_dias, dias_por_anio,
             tipo_gracia, periodos_gracia, 
             seguro_desgravamen, seguro_vehicular_anual, comisiones,
             tasa_descuento_COK, tipo_moneda, tipo_cambio,
-            costos_notariales, costos_registrales
+            costos_notariales, costos_registrales, tasacion, comision_estudio, comision_activacion,
+            portes, gastos_administracion
         } = req.body;
 
         const userId = req.headers['userid'];
@@ -26,53 +28,65 @@ exports.simularCredito = async (req, res) => {
 
         // 1. Preparación Financiera con valores por defecto para evitar NaN
         const precio_vehiculo_val = Number(precio_vehiculo) || 0;
-        const cuota_inicial_val = Number(cuota_inicial) || 0;
+        const cuota_inicial_porcentaje_val = Number(cuota_inicial_porcentaje) || 0;
+        const cuota_inicial_val = precio_vehiculo_val * (cuota_inicial_porcentaje_val / 100);
         const cuota_final_porcentaje_val = Number(cuota_final_porcentaje) || 0;
         const tasa_interes_val = Number(tasa_interes) || 0;
-        const plazo_meses_val = Number(plazo_meses) || 0;
+        
+        const numero_anios_val = Number(numero_anios) || 0;
+        const frecuencia_pago_dias_val = Number(frecuencia_pago_dias) || 30;
+        const dias_por_anio_val = Number(dias_por_anio) || 360;
+        const plazo_total_periodos = (numero_anios_val * dias_por_anio_val) / frecuencia_pago_dias_val;
+        
         const periodos_gracia_val = Number(periodos_gracia) || 0;
         const seguro_desgravamen_val = Number(seguro_desgravamen) || 0;
         const seguro_vehicular_anual_val = Number(seguro_vehicular_anual) || 0;
         const comisiones_val = Number(comisiones) || 0;
         const costos_notariales_val = Number(costos_notariales) || 0;
         const costos_registrales_val = Number(costos_registrales) || 0;
+        const tasacion_val = Number(tasacion) || 0;
+        const comision_estudio_val = Number(comision_estudio) || 0;
+        const comision_activacion_val = Number(comision_activacion) || 0;
+        const portes_val = Number(portes) || 0;
+        const gastos_administracion_val = Number(gastos_administracion) || 0;
 
         const monto_a_financiar = precio_vehiculo_val - cuota_inicial_val;
         const cuota_final = precio_vehiculo_val * (cuota_final_porcentaje_val / 100);
-        const seguro_vehicular_mensual = seguro_vehicular_anual_val / 12;
+        // Ajuste de seguro vehicular para el periodo: anual -> diario -> por periodo
+        const seguro_vehicular_periodo = (seguro_vehicular_anual_val / dias_por_anio_val) * frecuencia_pago_dias_val;
 
-        let TEM = 0;
+        let TEP = 0;
         if (tipo_tasa === 'TEA') {
-            TEM = Math.pow(1 + tasa_interes_val, 30 / 360) - 1;
+            TEP = Math.pow(1 + tasa_interes_val, frecuencia_pago_dias_val / dias_por_anio_val) - 1;
         } else if (tipo_tasa === 'TNA') {
-            let m = capitalizacion === 'Diaria' ? 360 : 12;
+            let m = capitalizacion === 'Diaria' ? dias_por_anio_val : 12; // asumiendo 12 meses
             let tasa_cap = tasa_interes_val / m;
-            let n_periodos = capitalizacion === 'Diaria' ? 30 : 1; 
-            TEM = Math.pow(1 + tasa_cap, n_periodos) - 1;
+            let n_periodos = capitalizacion === 'Diaria' ? frecuencia_pago_dias_val : (frecuencia_pago_dias_val / 30); 
+            TEP = Math.pow(1 + tasa_cap, n_periodos) - 1;
         }
 
-        const VP_Balloon = cuota_final / Math.pow(1 + TEM, plazo_meses_val);
+        const VP_Balloon = cuota_final / Math.pow(1 + TEP, plazo_total_periodos);
         let saldo_amortizable = monto_a_financiar - VP_Balloon;
         let saldo_actual = monto_a_financiar;
 
         let cronograma = [];
         // Perspectiva del Deudor: Recibe (positivo), Paga (negativo)
-        let flujo_dia_cero = monto_a_financiar - comisiones_val - costos_notariales_val - costos_registrales_val;
+        let flujo_dia_cero = monto_a_financiar - comisiones_val - costos_notariales_val - costos_registrales_val - tasacion_val - comision_estudio_val - comision_activacion_val;
         let flujos_caja = [flujo_dia_cero]; 
-        let plazos_regulares = plazo_meses_val - periodos_gracia_val;
+        let plazos_regulares = plazo_total_periodos - periodos_gracia_val;
 
         const calcularCuotaFija = (saldo, n, tasa) => {
             if(tasa === 0) return saldo / n;
             return saldo * (tasa * Math.pow(1 + tasa, n)) / (Math.pow(1 + tasa, n) - 1);
         };
 
-        let tasa_ajustada = TEM + seguro_desgravamen_val;
+        let tasa_ajustada = TEP + seguro_desgravamen_val;
 
-        for (let i = 1; i <= plazo_meses_val; i++) {
+        for (let i = 1; i <= plazo_total_periodos; i++) {
             let saldo_inicial_mes = saldo_actual;
-            let interes = saldo_actual * TEM;
+            let interes = saldo_actual * TEP;
             let s_desgravamen = saldo_actual * seguro_desgravamen_val;
-            let s_vehicular = precio_vehiculo_val * seguro_vehicular_mensual;
+            let s_vehicular = precio_vehiculo_val * seguro_vehicular_periodo;
             let cuota_interes = interes;
             let amortizacion = 0;
             let cuota_total = 0;
@@ -84,23 +98,23 @@ exports.simularCredito = async (req, res) => {
                     cuota_total = 0;
                 } else if (tipo_gracia === 'Parcial') {
                     amortizacion = 0;
-                    cuota_total = cuota_interes + s_desgravamen + s_vehicular;
+                    cuota_total = cuota_interes + s_desgravamen + s_vehicular + portes_val + gastos_administracion_val;
                 }
             } else {
                 if (i === periodos_gracia_val + 1) {
-                    let nuevo_vp_balloon = cuota_final / Math.pow(1 + TEM, plazo_meses_val - periodos_gracia_val);
+                    let nuevo_vp_balloon = cuota_final / Math.pow(1 + TEP, plazo_total_periodos - periodos_gracia_val);
                     saldo_amortizable = saldo_actual - nuevo_vp_balloon;
                 }
                 let cuota_fija = calcularCuotaFija(saldo_amortizable, plazos_regulares, tasa_ajustada);
                 amortizacion = cuota_fija - interes - s_desgravamen;
-                cuota_total = cuota_fija + s_vehicular;
+                cuota_total = cuota_fija + s_vehicular + portes_val + gastos_administracion_val;
                 saldo_actual -= amortizacion;
             }
 
-            if (i === plazo_meses_val) {
+            if (i === plazo_total_periodos) {
                 // Corrección matemática para cuadrar a cero exacto en el último mes
                 amortizacion = saldo_inicial_mes;
-                cuota_total = amortizacion + cuota_interes + s_desgravamen + s_vehicular;
+                cuota_total = amortizacion + cuota_interes + s_desgravamen + s_vehicular + portes_val + gastos_administracion_val;
                 saldo_actual = 0;
             }
 
@@ -114,23 +128,28 @@ exports.simularCredito = async (req, res) => {
         }
 
         const tasa_descuento_COK_val = Number(tasa_descuento_COK) || 0.10;
-        const TEM_COK = Math.pow(1 + tasa_descuento_COK_val, 1 / 12) - 1;
-        const TIR_mensual = calcularTIR(flujos_caja); 
-        const TCEA = Math.pow(1 + TIR_mensual, 12) - 1;
-        const VAN = calcularVAN(TEM_COK, flujos_caja);
+        // TEP_COK para descontar flujos periódicos
+        const TEP_COK = Math.pow(1 + tasa_descuento_COK_val, frecuencia_pago_dias_val / dias_por_anio_val) - 1;
+        const TIR_periodo = calcularTIR(flujos_caja); 
+        // Anualizando la TIR para obtener la TCEA
+        const TCEA = Math.pow(1 + TIR_periodo, dias_por_anio_val / frecuencia_pago_dias_val) - 1;
+        const VAN = calcularVAN(TEP_COK, flujos_caja);
 
         // 2. Persistencia en Base de Datos
         const adicionales = await CostosAdicionales.create({
             seguro_desgravamen, seguro_vehicular: seguro_vehicular_anual, comisiones,
-            costos_notariales: costos_notariales_val, costos_registrales: costos_registrales_val
+            costos_notariales: costos_notariales_val, costos_registrales: costos_registrales_val,
+            tasacion: tasacion_val, comision_estudio: comision_estudio_val, comision_activacion: comision_activacion_val,
+            portes: portes_val, gastos_administracion: gastos_administracion_val
         });
 
         const creditoId = req.body.id; // Si viene ID, es actualización
         let credito;
 
         const creditData = {
-            cuota_inicial, cuota_final_porcentaje, monto_financiado: monto_a_financiar,
-            tipo_tasa, tasa_interes, capitalizacion, plazo_meses, tipo_moneda: tipo_moneda || 'PEN',
+            cuota_inicial_porcentaje, cuota_final_porcentaje, monto_financiado: monto_a_financiar,
+            tipo_tasa, tasa_interes, capitalizacion, numero_anios, frecuencia_pago_dias, dias_por_anio,
+            tipo_moneda: tipo_moneda || 'PEN',
             tipo_cambio: tc, tasa_descuento_COK: tasa_descuento_COK_val,
             tipo_gracia, periodos_gracia, ID_Usuario_Creador: userId,
             ID_Cliente: cliente?.id, ID_Vehiculo: vehiculo.id, ID_Adicionales: adicionales.id
@@ -159,8 +178,9 @@ exports.simularCredito = async (req, res) => {
             success: true,
             data: {
                 id: credito.id,
-                monto_financiado: monto_a_financiar, TEM, TCEA, VAN, TIR_mensual,
-                cuota_mensual_referencial: cuota_mensual_ref, cuota_final, cronograma
+                monto_financiado: monto_a_financiar, TEP, TCEA, VAN, TIR_periodo,
+                cuota_mensual_referencial: cuota_mensual_ref, cuota_final, cronograma,
+                cuota_inicial: cuota_inicial_val // Devolvemos el absoluto para la vista
             }
         });
 
@@ -282,19 +302,28 @@ exports.exportarExcel = async (req, res) => {
         sheet.getCell('A12').value = `VAN: ${moneda}${Number(credito.DatosSalida?.VAN).toFixed(2)}`;
         sheet.getCell('A13').value = `Cuota Referencial: ${moneda}${Number(credito.DatosSalida?.cuota_mensual).toFixed(2)}`;
         
-        sheet.getCell('D10').value = 'Parámetros Adicionales';
+        sheet.getCell('D10').value = 'Gastos Iniciales y Moneda';
         sheet.getCell('D10').font = { bold: true };
-        sheet.getCell('D11').value = `Tipo de Cambio Aplicado: ${Number(credito.tipo_cambio || 1).toFixed(4)}`;
-        sheet.getCell('D12').value = `Costos Notariales (Día 0): ${moneda}${Number(credito.CostosAdicionale?.costos_notariales || 0).toFixed(2)}`;
-        sheet.getCell('D13').value = `Costos Registrales (Día 0): ${moneda}${Number(credito.CostosAdicionale?.costos_registrales || 0).toFixed(2)}`;
+        sheet.getCell('D11').value = `Tipo de Cambio: ${Number(credito.tipo_cambio || 1).toFixed(4)}`;
+        sheet.getCell('D12').value = `Tasación: ${moneda}${Number(credito.CostosAdicionale?.tasacion || 0).toFixed(2)}`;
+        sheet.getCell('D13').value = `Comisión Estudio: ${moneda}${Number(credito.CostosAdicionale?.comision_estudio || 0).toFixed(2)}`;
+        sheet.getCell('D14').value = `Comisión Activación: ${moneda}${Number(credito.CostosAdicionale?.comision_activacion || 0).toFixed(2)}`;
+        sheet.getCell('D15').value = `Notariales/Registrales: ${moneda}${Number((Number(credito.CostosAdicionale?.costos_notariales) || 0) + (Number(credito.CostosAdicionale?.costos_registrales) || 0)).toFixed(2)}`;
+
+        sheet.getCell('G10').value = 'Gastos Periódicos y Plazos';
+        sheet.getCell('G10').font = { bold: true };
+        sheet.getCell('G11').value = `Portes: ${moneda}${Number(credito.CostosAdicionale?.portes || 0).toFixed(2)}`;
+        sheet.getCell('G12').value = `Gastos de Administración: ${moneda}${Number(credito.CostosAdicionale?.gastos_administracion || 0).toFixed(2)}`;
+        sheet.getCell('G13').value = `Comisión Periódica: ${moneda}${Number(credito.CostosAdicionale?.comisiones || 0).toFixed(2)}`;
+        sheet.getCell('G14').value = `N° Años: ${credito.numero_anios} | Frecuencia: ${credito.frecuencia_pago_dias} días`;
 
         // Espacio antes del cronograma
         sheet.addRow([]);
         
-        const tableRowStart = 15;
+        const tableRowStart = 17;
 
         sheet.getRow(tableRowStart).values = [
-            'Mes', 'Saldo Inicial', 'Amortización', 'Interés', 
+            'Periodo', 'Saldo Inicial', 'Amortización', 'Interés', 
             'Seguro Desgravamen', 'Seguro Vehicular', 'Cuota', 'Saldo Final'
         ];
         sheet.getRow(tableRowStart).font = { bold: true };

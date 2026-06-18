@@ -42,24 +42,29 @@ const CostosAdicionales = sequelize.define('CostosAdicionales', {
     seguro_vehicular: { type: DataTypes.DECIMAL(5, 4), allowNull: false },
     comisiones: { type: DataTypes.DECIMAL(10, 2), defaultValue: 0.00 },
     costos_notariales: { type: DataTypes.DECIMAL(10, 2), defaultValue: 0.00 },
-    costos_registrales: { type: DataTypes.DECIMAL(10, 2), defaultValue: 0.00 }
+    costos_registrales: { type: DataTypes.DECIMAL(10, 2), defaultValue: 0.00 },
+    tasacion: { type: DataTypes.DECIMAL(10, 2), defaultValue: 0.00 },
+    comision_estudio: { type: DataTypes.DECIMAL(10, 2), defaultValue: 0.00 },
+    comision_activacion: { type: DataTypes.DECIMAL(10, 2), defaultValue: 0.00 },
+    portes: { type: DataTypes.DECIMAL(10, 2), defaultValue: 0.00 },
+    gastos_administracion: { type: DataTypes.DECIMAL(10, 2), defaultValue: 0.00 }
 }, { tableName: 'costos_adicionales', timestamps: false });
 
 const CreditoVehicular = sequelize.define('CreditoVehicular', {
     id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-    estado: { type: DataTypes.STRING(20), allowNull: false, defaultValue: 'Simulacion' }, // 'Simulacion' o 'Otorgado'
-    cuota_inicial: { type: DataTypes.DECIMAL(12, 2), allowNull: false },
-    cuota_final_porcentaje: { type: DataTypes.DECIMAL(5, 2), allowNull: false, defaultValue: 30 },
+    cuota_inicial_porcentaje: { type: DataTypes.DECIMAL(5, 2), allowNull: false },
+    cuota_final_porcentaje: { type: DataTypes.DECIMAL(5, 2), allowNull: false },
     monto_financiado: { type: DataTypes.DECIMAL(12, 2), allowNull: false },
-    tipo_moneda: { type: DataTypes.STRING(10), allowNull: false, defaultValue: 'PEN' },
     tipo_tasa: { type: DataTypes.STRING(10), allowNull: false },
     tasa_interes: { type: DataTypes.DECIMAL(8, 6), allowNull: false },
     capitalizacion: { type: DataTypes.STRING(15), allowNull: true },
-    tasa_descuento_COK: { type: DataTypes.DECIMAL(5, 4), allowNull: false },
+    tasa_descuento_COK: { type: DataTypes.DECIMAL(8, 6), allowNull: false },
     estado: { type: DataTypes.STRING, defaultValue: 'Simulado' },
     tipo_moneda: { type: DataTypes.STRING, allowNull: false, defaultValue: 'PEN' },
     tipo_cambio: { type: DataTypes.DECIMAL(10, 4), allowNull: false, defaultValue: 1.0000 },
-    plazo_meses: { type: DataTypes.INTEGER, allowNull: false },
+    numero_anios: { type: DataTypes.INTEGER, allowNull: false },
+    frecuencia_pago_dias: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 30 },
+    dias_por_anio: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 360 },
     tipo_gracia: { type: DataTypes.STRING(10), allowNull: true },
     periodos_gracia: { type: DataTypes.INTEGER, defaultValue: 0 }
 }, { tableName: 'creditos_vehiculares', timestamps: true });
