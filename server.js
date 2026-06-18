@@ -5,7 +5,7 @@ const creditRoutes = require('./src/routes/creditRoutes');
 const userRoutes = require('./src/routes/userRoutes');
 const clientRoutes = require('./src/routes/clientRoutes');
 const vehicleRoutes = require('./src/routes/vehicleRoutes');
-const { Usuario } = require('./src/models'); 
+const { Usuario, Cliente, Vehiculo } = require('./src/models'); 
 
 const app = express();
 app.use(cors());
@@ -34,6 +34,29 @@ sequelize.sync({ alter: true }).then(async () => {
         console.log('Usuario standard creado');
     }
 
+    // Seed default test client
+    const [clienteTest, clienteCreated] = await Cliente.findOrCreate({
+        where: { dni: '45678912' },
+        defaults: {
+            nombre: 'Juan', apellido: 'Pérez Alva', dni: '45678912',
+            direccion: 'Lima, Perú', ocupacion: 'Empleado', genero: 'Masculino',
+            celular: '987654321', estado_civil: 'Soltero',
+            ingreso_mensual: 5000, moneda_ingresos: 'PEN', edad: 35
+        }
+    });
+    if (clienteCreated) console.log('Cliente de prueba (Juan Pérez Alva) creado');
+
+    // Seed default test vehicle
+    const [vehiculoTest, vehiculoCreated] = await Vehiculo.findOrCreate({
+        where: { numero_serie: 'TOY-COROLLA-2021' },
+        defaults: {
+            marca: 'Toyota', modelo: 'Corolla', anio: 2021,
+            precio: 25000, estado: 'Seminuevo',
+            numero_serie: 'TOY-COROLLA-2021', kilometraje: 15000,
+            moneda: 'USD', imagen: null
+        }
+    });
+    if (vehiculoCreated) console.log('Vehículo de prueba (Toyota Corolla) creado');
     app.listen(PORT, () => {
         console.log(`Server running on port ${PORT}`);
     });
