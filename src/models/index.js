@@ -19,6 +19,7 @@ const Cliente = sequelize.define('Cliente', {
     celular: { type: DataTypes.STRING, allowNull: true },
     estado_civil: { type: DataTypes.STRING, allowNull: true },
     ingreso_mensual: { type: DataTypes.DECIMAL(10, 2), allowNull: false },
+    moneda_ingresos: { type: DataTypes.STRING, allowNull: false, defaultValue: 'PEN' },
     edad: { type: DataTypes.INTEGER, allowNull: false }
 }, { tableName: 'clientes', timestamps: false });
 
@@ -31,6 +32,7 @@ const Vehiculo = sequelize.define('Vehiculo', {
     estado: { type: DataTypes.STRING, allowNull: false, defaultValue: 'Nuevo' },
     numero_serie: { type: DataTypes.STRING, allowNull: false, unique: true },
     kilometraje: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+    moneda: { type: DataTypes.STRING, allowNull: false, defaultValue: 'PEN' },
     imagen: { type: DataTypes.TEXT, allowNull: true } // TEXT for base64 strings
 }, { tableName: 'vehiculos', timestamps: false });
 
@@ -38,7 +40,9 @@ const CostosAdicionales = sequelize.define('CostosAdicionales', {
     id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
     seguro_desgravamen: { type: DataTypes.DECIMAL(5, 4), allowNull: false },
     seguro_vehicular: { type: DataTypes.DECIMAL(5, 4), allowNull: false },
-    comisiones: { type: DataTypes.DECIMAL(10, 2), defaultValue: 0.00 }
+    comisiones: { type: DataTypes.DECIMAL(10, 2), defaultValue: 0.00 },
+    costos_notariales: { type: DataTypes.DECIMAL(10, 2), defaultValue: 0.00 },
+    costos_registrales: { type: DataTypes.DECIMAL(10, 2), defaultValue: 0.00 }
 }, { tableName: 'costos_adicionales', timestamps: false });
 
 const CreditoVehicular = sequelize.define('CreditoVehicular', {
@@ -51,6 +55,10 @@ const CreditoVehicular = sequelize.define('CreditoVehicular', {
     tipo_tasa: { type: DataTypes.STRING(10), allowNull: false },
     tasa_interes: { type: DataTypes.DECIMAL(8, 6), allowNull: false },
     capitalizacion: { type: DataTypes.STRING(15), allowNull: true },
+    tasa_descuento_COK: { type: DataTypes.DECIMAL(5, 4), allowNull: false },
+    estado: { type: DataTypes.STRING, defaultValue: 'Simulado' },
+    tipo_moneda: { type: DataTypes.STRING, allowNull: false, defaultValue: 'PEN' },
+    tipo_cambio: { type: DataTypes.DECIMAL(10, 4), allowNull: false, defaultValue: 1.0000 },
     plazo_meses: { type: DataTypes.INTEGER, allowNull: false },
     tipo_gracia: { type: DataTypes.STRING(10), allowNull: true },
     periodos_gracia: { type: DataTypes.INTEGER, defaultValue: 0 }

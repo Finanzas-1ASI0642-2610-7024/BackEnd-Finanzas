@@ -10,7 +10,8 @@ exports.simularCredito = async (req, res) => {
             tipo_tasa, tasa_interes, capitalizacion, plazo_meses, 
             tipo_gracia, periodos_gracia, 
             seguro_desgravamen, seguro_vehicular_anual, comisiones,
-            tasa_descuento_COK, tipo_moneda
+            tasa_descuento_COK, tipo_moneda, tipo_cambio,
+            costos_notariales, costos_registrales
         } = req.body;
 
         const userId = req.headers['userid'];
@@ -20,7 +21,8 @@ exports.simularCredito = async (req, res) => {
         
         const cliente = await Cliente.findByPk(ID_Cliente);
         
-        const precio_vehiculo = vehiculo.precio;
+        const tc = Number(tipo_cambio) || 1.0000;
+        const precio_vehiculo = vehiculo.precio * tc;
 
         // 1. Preparación Financiera con valores por defecto para evitar NaN
         const precio_vehiculo_val = Number(precio_vehiculo) || 0;
@@ -32,6 +34,8 @@ exports.simularCredito = async (req, res) => {
         const seguro_desgravamen_val = Number(seguro_desgravamen) || 0;
         const seguro_vehicular_anual_val = Number(seguro_vehicular_anual) || 0;
         const comisiones_val = Number(comisiones) || 0;
+        const costos_notariales_val = Number(costos_notariales) || 0;
+        const costos_registrales_val = Number(costos_registrales) || 0;
 
         const monto_a_financiar = precio_vehiculo_val - cuota_inicial_val;
         const cuota_final = precio_vehiculo_val * (cuota_final_porcentaje_val / 100);
@@ -52,7 +56,9 @@ exports.simularCredito = async (req, res) => {
         let saldo_actual = monto_a_financiar;
 
         let cronograma = [];
-        let flujos_caja = [-monto_a_financiar + comisiones_val]; 
+        // Perspectiva del Deudor: Recibe (positivo), Paga (negativo)
+        let flujo_dia_cero = monto_a_financiar - comisiones_val - costos_notariales_val - costos_registrales_val;
+        let flujos_caja = [flujo_dia_cero]; 
         let plazos_regulares = plazo_meses_val - periodos_gracia_val;
 
         const calcularCuotaFija = (saldo, n, tasa) => {
@@ -104,7 +110,7 @@ exports.simularCredito = async (req, res) => {
                 seguro_vehicular: s_vehicular, cuota: cuota_total,
                 saldo_final: saldo_actual < 0.01 ? 0 : saldo_actual
             });
-            flujos_caja.push(cuota_total);
+            flujos_caja.push(-cuota_total); // El deudor paga (negativo)
         }
 
         const tasa_descuento_COK_val = Number(tasa_descuento_COK) || 0.10;
@@ -115,7 +121,8 @@ exports.simularCredito = async (req, res) => {
 
         // 2. Persistencia en Base de Datos
         const adicionales = await CostosAdicionales.create({
-            seguro_desgravamen, seguro_vehicular: seguro_vehicular_anual, comisiones
+            seguro_desgravamen, seguro_vehicular: seguro_vehicular_anual, comisiones,
+            costos_notariales: costos_notariales_val, costos_registrales: costos_registrales_val
         });
 
         const creditoId = req.body.id; // Si viene ID, es actualización
@@ -124,6 +131,7 @@ exports.simularCredito = async (req, res) => {
         const creditData = {
             cuota_inicial, cuota_final_porcentaje, monto_financiado: monto_a_financiar,
             tipo_tasa, tasa_interes, capitalizacion, plazo_meses, tipo_moneda: tipo_moneda || 'PEN',
+            tipo_cambio: tc,
             tipo_gracia, periodos_gracia, ID_Usuario_Creador: userId,
             ID_Cliente: cliente?.id, ID_Vehiculo: vehiculo.id, ID_Adicionales: adicionales.id
         };
@@ -214,7 +222,7 @@ exports.exportarExcel = async (req, res) => {
     try {
         const { id } = req.params;
         const credito = await CreditoVehicular.findByPk(id, {
-            include: [Cliente, Vehiculo, DatosSalida]
+            include: [Cliente, Vehiculo, CostosAdicionales, DatosSalida]
         });
 
         if(!credito) return res.status(404).send('Crédito no encontrado');
@@ -267,12 +275,18 @@ exports.exportarExcel = async (req, res) => {
         sheet.getCell('D5').value = `Kilometraje: ${credito.Vehiculo?.kilometraje || 0} km`;
         sheet.getCell('D6').value = `Precio: ${moneda}${Number(credito.Vehiculo?.precio).toFixed(2)}`;
 
-        // Resultados Financieros
-        sheet.getCell('A10').value = 'Resultados';
+        // Resultados Financieros y Costos Iniciales
+        sheet.getCell('A10').value = 'Resumen y Costos Iniciales';
         sheet.getCell('A10').font = { bold: true };
         sheet.getCell('A11').value = `TCEA: ${(credito.DatosSalida?.TCEA * 100).toFixed(2)}%`;
         sheet.getCell('A12').value = `VAN: ${moneda}${Number(credito.DatosSalida?.VAN).toFixed(2)}`;
         sheet.getCell('A13').value = `Cuota Referencial: ${moneda}${Number(credito.DatosSalida?.cuota_mensual).toFixed(2)}`;
+        
+        sheet.getCell('D10').value = 'Parámetros Adicionales';
+        sheet.getCell('D10').font = { bold: true };
+        sheet.getCell('D11').value = `Tipo de Cambio Aplicado: ${Number(credito.tipo_cambio || 1).toFixed(4)}`;
+        sheet.getCell('D12').value = `Costos Notariales (Día 0): ${moneda}${Number(credito.CostosAdicionale?.costos_notariales || 0).toFixed(2)}`;
+        sheet.getCell('D13').value = `Costos Registrales (Día 0): ${moneda}${Number(credito.CostosAdicionale?.costos_registrales || 0).toFixed(2)}`;
 
         // Espacio antes del cronograma
         sheet.addRow([]);
