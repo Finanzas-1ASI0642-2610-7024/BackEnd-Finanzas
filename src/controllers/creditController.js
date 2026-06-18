@@ -76,6 +76,14 @@ exports.simularCredito = async (req, res) => {
         let flujos_caja = [flujo_dia_cero]; 
         let plazos_regulares = plazo_total_periodos - periodos_gracia_val;
 
+        // Añadir Mes 0
+        cronograma.push({
+            mes: 0, saldo_inicial: 0, amortizacion: 0,
+            interes: 0, seguro_desgravamen: 0, seguro_vehicular: 0,
+            portes: 0, comisiones: 0, cuota: 0, saldo_final: monto_del_prestamo,
+            flujo_caja: flujo_dia_cero
+        });
+
         const calcularCuotaFija = (saldo, n, tasa) => {
             if(tasa === 0) return saldo / n;
             return saldo * (tasa * Math.pow(1 + tasa, n)) / (Math.pow(1 + tasa, n) - 1);
@@ -99,7 +107,7 @@ exports.simularCredito = async (req, res) => {
                     cuota_total = 0;
                 } else if (tipo_gracia === 'Parcial') {
                     amortizacion = 0;
-                    cuota_total = cuota_interes + s_desgravamen + s_vehicular + portes_val + gastos_administracion_val;
+                    cuota_total = cuota_interes + s_desgravamen + s_vehicular + portes_val + gastos_administracion_val + comisiones_val;
                 }
             } else {
                 if (i === periodos_gracia_val + 1) {
@@ -108,22 +116,29 @@ exports.simularCredito = async (req, res) => {
                 }
                 let cuota_fija = calcularCuotaFija(saldo_amortizable, plazos_regulares, tasa_ajustada);
                 amortizacion = cuota_fija - interes - s_desgravamen;
-                cuota_total = cuota_fija + s_vehicular + portes_val + gastos_administracion_val;
+                
+                // Si estamos en el último periodo, ajustamos para que quede exactamente en 0 o en el globo (si lo hay) por temas de decimales
+                if (i === plazo_total_periodos) {
+                    if (cuota_final > 0) {
+                        amortizacion = saldo_actual - cuota_final;
+                    } else {
+                        amortizacion = saldo_actual;
+                    }
+                }
+                
+                cuota_total = amortizacion + cuota_interes + s_desgravamen + s_vehicular + portes_val + gastos_administracion_val + comisiones_val;
                 saldo_actual -= amortizacion;
-            }
-
-            if (i === plazo_total_periodos) {
-                // Corrección matemática para cuadrar a cero exacto en el último mes
-                amortizacion = saldo_inicial_mes;
-                cuota_total = amortizacion + cuota_interes + s_desgravamen + s_vehicular + portes_val + gastos_administracion_val;
-                saldo_actual = 0;
             }
 
             cronograma.push({
                 mes: i, saldo_inicial: saldo_inicial_mes, amortizacion,
                 interes: cuota_interes, seguro_desgravamen: s_desgravamen,
-                seguro_vehicular: s_vehicular, cuota: cuota_total,
-                saldo_final: saldo_actual < 0.01 ? 0 : saldo_actual
+                seguro_vehicular: s_vehicular, 
+                portes: portes_val + gastos_administracion_val,
+                comisiones: comisiones_val,
+                cuota: cuota_total,
+                saldo_final: saldo_actual < 0.01 ? 0 : saldo_actual,
+                flujo_caja: -cuota_total
             });
             flujos_caja.push(-cuota_total); // El deudor paga (negativo)
         }
