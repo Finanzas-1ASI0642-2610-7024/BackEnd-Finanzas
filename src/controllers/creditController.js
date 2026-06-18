@@ -51,6 +51,7 @@ exports.simularCredito = async (req, res) => {
         const gastos_administracion_val = Number(gastos_administracion) || 0;
 
         const monto_a_financiar = precio_vehiculo_val - cuota_inicial_val;
+        const monto_del_prestamo = monto_a_financiar + costos_notariales_val + costos_registrales_val + tasacion_val + comision_estudio_val + comision_activacion_val;
         const cuota_final = precio_vehiculo_val * (cuota_final_porcentaje_val / 100);
         // Ajuste de seguro vehicular para el periodo: anual -> diario -> por periodo
         const seguro_vehicular_periodo = (seguro_vehicular_anual_val / dias_por_anio_val) * frecuencia_pago_dias_val;
@@ -66,12 +67,12 @@ exports.simularCredito = async (req, res) => {
         }
 
         const VP_Balloon = cuota_final / Math.pow(1 + TEP, plazo_total_periodos);
-        let saldo_amortizable = monto_a_financiar - VP_Balloon;
-        let saldo_actual = monto_a_financiar;
+        let saldo_amortizable = monto_del_prestamo - VP_Balloon;
+        let saldo_actual = monto_del_prestamo;
 
         let cronograma = [];
-        // Perspectiva del Deudor: Recibe (positivo), Paga (negativo)
-        let flujo_dia_cero = monto_a_financiar - comisiones_val - costos_notariales_val - costos_registrales_val - tasacion_val - comision_estudio_val - comision_activacion_val;
+        // Perspectiva del Deudor: Recibe el Préstamo (positivo), Paga Cuotas (negativo)
+        let flujo_dia_cero = monto_del_prestamo; // Según teoría: 0 = Préstamo - Sum(...)
         let flujos_caja = [flujo_dia_cero]; 
         let plazos_regulares = plazo_total_periodos - periodos_gracia_val;
 
@@ -166,21 +167,39 @@ exports.simularCredito = async (req, res) => {
             credito = await CreditoVehicular.create(creditData);
         }
 
-        const cuota_mensual_ref = cronograma[(periodos_gracia || 0)] ? cronograma[(periodos_gracia || 0)].cuota : 0;
+        const cuota_mensual_ref = cronograma[(periodos_gracia_val || 0)] ? cronograma[(periodos_gracia_val || 0)].cuota : 0;
+        
         await DatosSalida.create({
             monto_financiado: monto_a_financiar, cuota_mensual: cuota_mensual_ref,
-            cuota_final, TCEA, VAN, TIR: TIR_mensual,
+            cuota_final, TCEA, VAN, TIR: TIR_periodo,
             cronograma_pagos_json: JSON.stringify(cronograma),
             ID_Credito: credito.id
+        });
+
+        // Calcular Totales para UI
+        const totales = cronograma.reduce((acc, curr) => {
+            acc.interes += curr.interes;
+            acc.amortizacion += curr.amortizacion;
+            acc.seguro_desgravamen += curr.seguro_desgravamen;
+            acc.seguro_vehicular += curr.seguro_vehicular;
+            acc.comisiones += comisiones_val;
+            acc.portes_gastos += (portes_val + gastos_administracion_val);
+            return acc;
+        }, {
+            interes: 0, amortizacion: 0, seguro_desgravamen: 0, 
+            seguro_vehicular: 0, comisiones: 0, portes_gastos: 0
         });
 
         return res.status(200).json({
             success: true,
             data: {
                 id: credito.id,
-                monto_financiado: monto_a_financiar, TEP, TCEA, VAN, TIR_periodo,
+                monto_financiado: monto_a_financiar, 
+                monto_del_prestamo,
+                TEP, TCEA, VAN, TIR_periodo, TEP_COK,
                 cuota_mensual_referencial: cuota_mensual_ref, cuota_final, cronograma,
-                cuota_inicial: cuota_inicial_val // Devolvemos el absoluto para la vista
+                cuota_inicial: cuota_inicial_val, // Devolvemos el absoluto para la vista
+                totales
             }
         });
 
@@ -296,10 +315,42 @@ exports.exportarExcel = async (req, res) => {
         sheet.getCell('D6').value = `Precio: ${moneda}${Number(credito.Vehiculo?.precio).toFixed(2)}`;
 
         // Resultados Financieros y Costos Iniciales
-        sheet.getCell('A10').value = 'Resumen y Costos Iniciales';
+        let cronograma = [];
+        if (credito.DatosSalida && credito.DatosSalida.cronograma_pagos_json) {
+            cronograma = JSON.parse(credito.DatosSalida.cronograma_pagos_json);
+        }
+
+        const totales = cronograma.reduce((acc, curr) => {
+            acc.interes += curr.interes;
+            acc.amortizacion += curr.amortizacion;
+            acc.seguro_desgravamen += curr.seguro_desgravamen;
+            acc.seguro_vehicular += curr.seguro_vehicular;
+            return acc;
+        }, {
+            interes: 0, amortizacion: 0, seguro_desgravamen: 0, seguro_vehicular: 0
+        });
+
+        // Sumar costos periodicos multiplicados por el nro de cuotas
+        const numero_cuotas = cronograma.length;
+        const comisiones_totales = (Number(credito.CostosAdicionale?.comisiones) || 0) * numero_cuotas;
+        const portes_gastos_totales = ((Number(credito.CostosAdicionale?.portes) || 0) + (Number(credito.CostosAdicionale?.gastos_administracion) || 0)) * numero_cuotas;
+
+        const tasa_descuento_COK_val = Number(credito.tasa_descuento_COK) || 0.10;
+        const frecuencia_pago_dias_val = Number(credito.frecuencia_pago_dias) || 30;
+        const dias_por_anio_val = Number(credito.dias_por_anio) || 360;
+        const TEP_COK = Math.pow(1 + tasa_descuento_COK_val, frecuencia_pago_dias_val / dias_por_anio_val) - 1;
+
+        sheet.getCell('A10').value = 'Resumen del Financiamiento';
         sheet.getCell('A10').font = { bold: true };
-        sheet.getCell('A11').value = `TCEA: ${(credito.DatosSalida?.TCEA * 100).toFixed(2)}%`;
-        sheet.getCell('A12').value = `VAN: ${moneda}${Number(credito.DatosSalida?.VAN).toFixed(2)}`;
+        sheet.getCell('A11').value = `Saldo a financiar: ${moneda}${Number(credito.DatosSalida?.monto_financiado).toFixed(2)}`;
+        // Monto del prestamo = monto a financiar + gastos iniciales
+        const gastos_iniciales = (Number(credito.CostosAdicionale?.tasacion) || 0) +
+                                 (Number(credito.CostosAdicionale?.comision_estudio) || 0) +
+                                 (Number(credito.CostosAdicionale?.comision_activacion) || 0) +
+                                 (Number(credito.CostosAdicionale?.costos_notariales) || 0) +
+                                 (Number(credito.CostosAdicionale?.costos_registrales) || 0);
+        const monto_del_prestamo = Number(credito.DatosSalida?.monto_financiado) + gastos_iniciales;
+        sheet.getCell('A12').value = `Monto del préstamo: ${moneda}${monto_del_prestamo.toFixed(2)}`;
         sheet.getCell('A13').value = `Cuota Referencial: ${moneda}${Number(credito.DatosSalida?.cuota_mensual).toFixed(2)}`;
         
         sheet.getCell('D10').value = 'Gastos Iniciales y Moneda';
@@ -310,17 +361,26 @@ exports.exportarExcel = async (req, res) => {
         sheet.getCell('D14').value = `Comisión Activación: ${moneda}${Number(credito.CostosAdicionale?.comision_activacion || 0).toFixed(2)}`;
         sheet.getCell('D15').value = `Notariales/Registrales: ${moneda}${Number((Number(credito.CostosAdicionale?.costos_notariales) || 0) + (Number(credito.CostosAdicionale?.costos_registrales) || 0)).toFixed(2)}`;
 
-        sheet.getCell('G10').value = 'Gastos Periódicos y Plazos';
+        sheet.getCell('G10').value = 'Indicadores de Rentabilidad';
         sheet.getCell('G10').font = { bold: true };
-        sheet.getCell('G11').value = `Portes: ${moneda}${Number(credito.CostosAdicionale?.portes || 0).toFixed(2)}`;
-        sheet.getCell('G12').value = `Gastos de Administración: ${moneda}${Number(credito.CostosAdicionale?.gastos_administracion || 0).toFixed(2)}`;
-        sheet.getCell('G13').value = `Comisión Periódica: ${moneda}${Number(credito.CostosAdicionale?.comisiones || 0).toFixed(2)}`;
-        sheet.getCell('G14').value = `N° Años: ${credito.numero_anios} | Frecuencia: ${credito.frecuencia_pago_dias} días`;
+        sheet.getCell('G11').value = `Tasa de Descuento: ${(Number(TEP_COK || 0) * 100).toFixed(4)}%`;
+        sheet.getCell('G12').value = `TIR (Periodo): ${(Number(credito.DatosSalida?.TIR || 0) * 100).toFixed(4)}%`;
+        sheet.getCell('G13').value = `TCEA: ${(Number(credito.DatosSalida?.TCEA || 0) * 100).toFixed(4)}%`;
+        sheet.getCell('G14').value = `VAN: ${moneda}${Number(credito.DatosSalida?.VAN || 0).toFixed(2)}`;
+
+        sheet.getCell('A16').value = 'Totales de Costos y Gastos';
+        sheet.getCell('A16').font = { bold: true };
+        sheet.getCell('A17').value = `Intereses Totales: ${moneda}${totales.interes.toFixed(2)}`;
+        sheet.getCell('A18').value = `Amortización Capital: ${moneda}${totales.amortizacion.toFixed(2)}`;
+        sheet.getCell('D17').value = `Seguro Desgravamen: ${moneda}${totales.seguro_desgravamen.toFixed(2)}`;
+        sheet.getCell('D18').value = `Seguro Riesgo: ${moneda}${totales.seguro_vehicular.toFixed(2)}`;
+        sheet.getCell('G17').value = `Comisiones Periódicas: ${moneda}${comisiones_totales.toFixed(2)}`;
+        sheet.getCell('G18').value = `Portes y Gastos Adm.: ${moneda}${portes_gastos_totales.toFixed(2)}`;
 
         // Espacio antes del cronograma
         sheet.addRow([]);
         
-        const tableRowStart = 17;
+        const tableRowStart = 20;
 
         sheet.getRow(tableRowStart).values = [
             'Periodo', 'Saldo Inicial', 'Amortización', 'Interés', 
